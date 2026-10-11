@@ -417,7 +417,97 @@ GET /rest/w1/students/{studentId}/lessons/20250901/20260630
 
 ### Noticeboard
 
-#### List notices
+#### New frontend: communications and attachments
+
+The `/fe/fam/bacheca` frontend also uses a separate noticeboard API. If the student-scoped endpoint below returns an empty `items` array while the website shows notices, check this endpoint instead.
+
+##### List communications
+
+```http
+GET /rest/w1/noticeboarduser/{studentId}/communications
+```
+
+The browser sends its authenticated web-session cookies (`credentials: "include"`). A mobile API token is not interchangeable with this cookie session: a request with that token to `/rest/w1/...` returned HTTP 401 in the verification below.
+
+The same route under **`/rest/v1/`** was verified with the existing mobile-app authentication:
+
+```http
+GET /rest/v1/noticeboarduser/{studentId}/communications
+Z-Auth-Token: <mobile-login-token>
+Z-Dev-Apikey: <app-api-key>
+User-Agent: <mobile-app-user-agent>
+```
+
+Use the authentication result's numeric student identity, rather than hardcoding an ID. Verification used `CVVS/std/4.2.3 Android/12` and the existing app API-key configuration. Header compatibility may change; these observations do not establish support for every account or school.
+
+**Sanitized response example** (selected fields; IDs, title and file name are synthetic):
+
+```json
+{
+  "communications": [
+    {
+      "id": 1001,
+      "titolo": "Avviso: Orario definitivo",
+      "sottotitolo": "",
+      "testo": "<p>Consultare l'allegato.</p>",
+      "numerazione": 1,
+      "tipologia_desc": "News",
+      "pubblicazione": "2026-10-09 16:04:00",
+      "scadenza": "2027-01-15 13:49:00",
+      "anno_scol": 2026,
+      "n_allegati": 1,
+      "attachment": [
+        {
+          "id": 2001,
+          "descrizione": "Orario definitivo.pdf",
+          "extension": "",
+          "firma": {
+            "da_firmare": 0,
+            "tipo_firma": null,
+            "id_doc_sdg": null
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+`testo` can contain HTML and HTML entities. `attachment` is singular in the response key, but its value is an array. Additional observed communication keys include `id_tipologia`, `tipologia_colore`, `evidenza`, `stato_notifica`, `autore_id`, `autore_cognome`, `autore_nome`, `testo_link`, `pubblicazione_it`, `pubblicazione_hm`, `scadenza_it`, `scadenza_hm`, `risposta_adesione`, `risposta_conferma`, `risposta_testo`, `risposta_file`, `num_file_risposta`, `risposta_questionari`, `cassetto_documentale`, `editable_response` and `response`. Their full semantics have not been verified.
+
+##### Download a communication attachment
+
+```http
+GET /rest/w1/noticeboarduser/{studentId}/attachments/{schoolYear}/{communicationId}/{attachmentId}
+```
+
+For mobile-token authentication, use the verified equivalent:
+
+```http
+GET /rest/v1/noticeboarduser/{studentId}/attachments/{schoolYear}/{communicationId}/{attachmentId}
+```
+
+| Path parameter | Source |
+|---|---|
+| `studentId` | Numeric authenticated student identity |
+| `schoolYear` | Communication's `anno_scol` (e.g. `2026`); use the value on each record |
+| `communicationId` | Communication's `id` |
+| `attachmentId` | Element's `attachment[].id`, **not** its array index |
+
+The response is the file body, not necessarily JSON. The browser request used `Accept: application/json`, but a tested PDF returned HTTP 200, `Content-Type: application/pdf` and a valid `%PDF` signature. `attachment[].descrizione` provided the file name; `extension` was empty for this PDF.
+
+##### Verification and observed limitations
+
+Verified on **2026-10-11** for one student account:
+
+- `/rest/v1/students/{studentId}/noticeboard` returned HTTP 200 with `{"items": []}`, including after a fresh mobile login.
+- `/rest/v1/noticeboarduser/{studentId}/communications` returned **270 communications** and **279 attachment entries**. The response contained expired notices and records with both `anno_scol: 2025` and `anno_scol: 2026`; no date or read-status filter was supplied. Do not substitute the current year for `anno_scol` when downloading older files. Server pagination or limits for larger datasets have not been verified.
+- **278 attachments** were downloaded. One listed JPG repeatedly returned HTTP 200, `Content-Type: application/x-empty` and a **zero-byte body**. Check both the HTTP status and the body before treating a download as successful; retain failures for a later retry.
+- Only list and attachment GET requests were used. No read, reply, join or signature endpoint was called; whether these GET requests themselves change read status was not independently verified.
+
+All examples above are sanitized; no real student IDs, tokens, cookies, names, or file contents are included.
+
+#### Student-scoped noticeboard: list notices
 
 ```
 GET /rest/w1/students/{studentId}/noticeboard
